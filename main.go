@@ -10,23 +10,10 @@ import (
 )
 
 func main() {
-	// set flag to input filename with quiz questions
-	csvFileName := flag.String("csv", "questions.csv", "a csv file in (question,answer) format")
-	timeLimit := flag.Int("limit", 5, "a time limit for every question in seconds")
-	flag.Parse()
+	csvFileName, timeLimit := setFlags()
 
-	file, err := os.Open(*csvFileName)
+	lines := readFile(csvFileName)
 
-	if err != nil {
-		exit(fmt.Sprintf("Failed to open file \"%s\"\n", *csvFileName))
-	}
-
-	// read all the lines from .csv file
-	r := csv.NewReader(file)
-	lines, err := r.ReadAll()
-	if err != nil {
-		exit("Failed to read provided file\n")
-	}
 	questions := parseLines(lines)
 
 	rightAnswers := startQuiz(questions, timeLimit)
@@ -39,6 +26,30 @@ type question struct {
 	answer   string
 }
 
+func setFlags() (*string, *int) {
+	csvFileName := flag.String("csv", "questions.csv", "a csv file in (question,answer) format")
+	timeLimit := flag.Int("limit", 5, "a time limit for every question in seconds")
+	flag.Parse()
+	return csvFileName, timeLimit
+}
+
+func readFile(filename *string) [][]string {
+	file, err := os.Open(*filename)
+
+	if err != nil {
+		exit(fmt.Sprintf("Failed to open file \"%s\"\n", *filename))
+	}
+
+	// read all the lines from .csv file
+	r := csv.NewReader(file)
+	lines, err := r.ReadAll()
+	if err != nil {
+		exit("Failed to read provided file\n")
+	}
+	return lines
+}
+
+// parses csv file to question struct array
 func parseLines(lines [][]string) []question {
 	quesions := make([]question, len(lines))
 
@@ -60,11 +71,16 @@ func exit(msg string) {
 func startQuiz(questions []question, timeLimit *int) int {
 	rightAnswers := 0
 
+	// start quiz timer
+	defer elapsed()()
+
 	for i, q := range questions {
 		fmt.Printf("Question #%d: %s = ", i+1, q.question)
+		// start timer for each question
 		timer := time.NewTimer(time.Duration(*timeLimit) * time.Second)
 		answerChannel := make(chan string)
 
+		// read input async
 		go func() {
 			answer := ""
 			fmt.Scanf("%s\n", &answer)
@@ -72,9 +88,11 @@ func startQuiz(questions []question, timeLimit *int) int {
 		}()
 
 		select {
+		// timer is done
 		case <-timer.C:
 			fmt.Printf("\nYou run out of time.\n")
 			return rightAnswers
+		// user typed an answer
 		case answer := <-answerChannel:
 			if answer == q.answer {
 				rightAnswers++
@@ -86,4 +104,12 @@ func startQuiz(questions []question, timeLimit *int) int {
 	}
 
 	return rightAnswers
+}
+
+// total quiz time
+func elapsed() func() {
+	start := time.Now()
+	return func() {
+		fmt.Printf("Total quiz time: %.2fs\n", time.Since(start).Seconds())
+	}
 }
