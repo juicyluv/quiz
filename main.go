@@ -5,13 +5,14 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
+	"time"
 )
 
 func main() {
-	rightAnswers := 0
-
 	// set flag to input filename with quiz questions
 	csvFileName := flag.String("csv", "questions.csv", "a csv file in (question,answer) format")
+	timeLimit := flag.Int("limit", 5, "a time limit for every question in seconds")
 	flag.Parse()
 
 	file, err := os.Open(*csvFileName)
@@ -28,17 +29,7 @@ func main() {
 	}
 	questions := parseLines(lines)
 
-	for i, q := range questions {
-		fmt.Printf("Question #%d: %s = ", i+1, q.question)
-		answer := ""
-		fmt.Scanf("%s\n", &answer)
-		if answer == q.answer {
-			rightAnswers += 1
-			fmt.Printf("Right!\n\n")
-		} else {
-			fmt.Printf("Wrong.\n\n")
-		}
-	}
+	rightAnswers := startQuiz(questions, timeLimit)
 
 	fmt.Printf("Result: %d/%d.\n", rightAnswers, len(questions))
 }
@@ -54,7 +45,7 @@ func parseLines(lines [][]string) []question {
 	for i, line := range lines {
 		quesions[i] = question{
 			question: line[0],
-			answer:   line[1],
+			answer:   strings.TrimSpace(line[1]),
 		}
 	}
 
@@ -64,4 +55,35 @@ func parseLines(lines [][]string) []question {
 func exit(msg string) {
 	fmt.Println(msg)
 	os.Exit(1)
+}
+
+func startQuiz(questions []question, timeLimit *int) int {
+	rightAnswers := 0
+
+	for i, q := range questions {
+		fmt.Printf("Question #%d: %s = ", i+1, q.question)
+		timer := time.NewTimer(time.Duration(*timeLimit) * time.Second)
+		answerChannel := make(chan string)
+
+		go func() {
+			answer := ""
+			fmt.Scanf("%s\n", &answer)
+			answerChannel <- answer
+		}()
+
+		select {
+		case <-timer.C:
+			fmt.Printf("\nYou run out of time.\n")
+			return rightAnswers
+		case answer := <-answerChannel:
+			if answer == q.answer {
+				rightAnswers++
+				fmt.Printf("Right!\n\n")
+			} else {
+				fmt.Printf("Wrong.\n\n")
+			}
+		}
+	}
+
+	return rightAnswers
 }
